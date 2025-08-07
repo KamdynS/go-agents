@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/KamdynS/go-agents/agent/core"
+	obs "github.com/KamdynS/go-agents/observability"
 )
 
 // Mock Agent for testing
@@ -72,7 +73,7 @@ func (m *MockAgent) Run(ctx context.Context, input core.Message) (core.Message, 
 
 func (m *MockAgent) RunStream(ctx context.Context, input core.Message, output chan<- core.Message) error {
 	defer close(output)
-	
+
 	// Store the call for inspection
 	m.calls = append(m.calls, input)
 
@@ -219,7 +220,7 @@ func TestServer_HealthHandler(t *testing.T) {
 func TestServer_ChatHandler_Success(t *testing.T) {
 	agent := NewMockAgent()
 	agent.AddResponse("Hello! How can I help you today?")
-	
+
 	server := NewServer(agent, Config{})
 
 	requestBody := ChatRequest{
@@ -338,7 +339,7 @@ func TestServer_ChatHandler_EmptyMessage(t *testing.T) {
 func TestServer_ChatHandler_AgentError(t *testing.T) {
 	agent := NewMockAgent()
 	agent.SetError(fmt.Errorf("agent processing error"))
-	
+
 	server := NewServer(agent, Config{})
 
 	requestBody := ChatRequest{Message: "This will fail"}
@@ -363,7 +364,7 @@ func TestServer_ChatHandler_AgentError(t *testing.T) {
 func TestServer_StreamHandler_Success(t *testing.T) {
 	agent := NewMockAgent()
 	agent.SetStreamChunks([]string{"Hello", " world", "!"}, 10*time.Millisecond)
-	
+
 	server := NewServer(agent, Config{})
 
 	requestBody := ChatRequest{
@@ -426,6 +427,74 @@ func TestServer_StreamHandler_MethodNotAllowed(t *testing.T) {
 
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("Expected status code 405, got %d", w.Code)
+	}
+}
+
+func TestServer_StreamHandler_CancelSendsDone(t *testing.T) {
+	agent := NewMockAgent()
+	agent.SetStreamChunks([]string{"chunk1", "chunk2"}, 50*time.Millisecond)
+
+	server := NewServer(agent, Config{})
+
+	reqBody := ChatRequest{Message: "cancel soon"}
+	body, _ := json.Marshal(reqBody)
+
+	// Create cancellable context
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest("POST", "/chat/stream", bytes.NewReader(body)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	// Cancel shortly after starting
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		cancel()
+	}()
+
+	server.streamHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "event: done") {
+		t.Error("expected final done event on cancel")
+	}
+}
+
+func TestObservability_HealthSpanAndMetrics(t *testing.T) {
+	// Swap in-memory implementations
+	tracer := obs.NewDefaultTracer()
+	metrics := obs.NewDefaultMetrics()
+	obs.SetTracer(tracer)
+	obs.SetMetrics(metrics)
+
+	agent := NewMockAgent()
+	server := NewServer(agent, Config{})
+
+	// Exercise through full middleware chain
+	ts := httptest.NewServer(server.server.Handler)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/health")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.Header.Get("X-Request-ID") == "" {
+		t.Error("missing X-Request-ID header")
+	}
+
+	// Verify metrics changed
+	stats := metrics.GetStats()
+	if stats["requests"].(int64) == 0 {
+		t.Error("expected requests counter to increment")
+	}
+
+	// Verify a span recorded
+	spans := tracer.GetSpans()
+	if len(spans) == 0 {
+		t.Fatal("expected at least one span recorded")
 	}
 }
 
@@ -625,7 +694,7 @@ func TestServer_Integration(t *testing.T) {
 	agent.AddResponse("Integration test response")
 
 	server := NewServer(agent, Config{})
-	
+
 	// Create test server
 	testServer := httptest.NewServer(server.server.Handler)
 	defer testServer.Close()

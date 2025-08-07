@@ -3,14 +3,16 @@ package llm
 import (
 	"context"
 	"time"
+
+	obs "github.com/KamdynS/go-agents/observability"
 )
 
 // Message represents a message in a conversation with an LLM
 type Message struct {
-	Role    string            `json:"role"`    // "system", "user", "assistant", "tool"
-	Content string            `json:"content"` // Message content
-	Name    string            `json:"name,omitempty"` // Optional name for the message
-	ToolCallID string         `json:"tool_call_id,omitempty"` // For tool response messages
+	Role       string `json:"role"`                   // "system", "user", "assistant", "tool"
+	Content    string `json:"content"`                // Message content
+	Name       string `json:"name,omitempty"`         // Optional name for the message
+	ToolCallID string `json:"tool_call_id,omitempty"` // For tool response messages
 }
 
 // Response represents the response from an LLM
@@ -29,8 +31,8 @@ type Response struct {
 
 // ToolCall represents a tool/function call from the LLM
 type ToolCall struct {
-	ID       string `json:"id"`
-	Type     string `json:"type"` // "function"
+	ID       string   `json:"id"`
+	Type     string   `json:"type"` // "function"
 	Function Function `json:"function"`
 }
 
@@ -44,19 +46,19 @@ type Function struct {
 type Client interface {
 	// Chat sends a conversation to the LLM and returns a response
 	Chat(ctx context.Context, req *ChatRequest) (*Response, error)
-	
+
 	// Completion sends a single prompt to the LLM and returns a response
 	Completion(ctx context.Context, prompt string) (*Response, error)
-	
+
 	// Stream enables streaming responses (if supported by the provider)
 	Stream(ctx context.Context, req *ChatRequest, output chan<- *Response) error
-	
+
 	// Model returns the model identifier
 	Model() string
-	
+
 	// Provider returns the provider name
 	Provider() Provider
-	
+
 	// Validate checks if the client configuration is valid
 	Validate() error
 }
@@ -82,7 +84,7 @@ type ChatRequest struct {
 
 // Tool represents a tool/function that the LLM can call
 type Tool struct {
-	Type     string   `json:"type"` // "function"
+	Type     string       `json:"type"` // "function"
 	Function ToolFunction `json:"function"`
 }
 
@@ -126,14 +128,125 @@ func DefaultRetryConfig() RetryConfig {
 
 // Config holds common configuration options for LLM clients
 type Config struct {
-	APIKey       string        `json:"api_key"`
-	Model        string        `json:"model"`
-	BaseURL      string        `json:"base_url,omitempty"`
-	Temperature  float64       `json:"temperature,omitempty"`
-	MaxTokens    int           `json:"max_tokens,omitempty"`
-	Timeout      time.Duration `json:"timeout,omitempty"`
-	RetryConfig  RetryConfig   `json:"retry_config,omitempty"`
-	Debug        bool          `json:"debug,omitempty"`
-	UserAgent    string        `json:"user_agent,omitempty"`
+	APIKey       string            `json:"api_key"`
+	Model        string            `json:"model"`
+	BaseURL      string            `json:"base_url,omitempty"`
+	Temperature  float64           `json:"temperature,omitempty"`
+	MaxTokens    int               `json:"max_tokens,omitempty"`
+	Timeout      time.Duration     `json:"timeout,omitempty"`
+	RetryConfig  RetryConfig       `json:"retry_config,omitempty"`
+	Debug        bool              `json:"debug,omitempty"`
+	UserAgent    string            `json:"user_agent,omitempty"`
 	ExtraHeaders map[string]string `json:"extra_headers,omitempty"`
 }
+
+// InstrumentedClient wraps a Client to emit spans and metrics
+type InstrumentedClient struct {
+	inner Client
+}
+
+func NewInstrumentedClient(inner Client) *InstrumentedClient {
+	return &InstrumentedClient{inner: inner}
+}
+
+func (c *InstrumentedClient) Chat(ctx context.Context, req *ChatRequest) (*Response, error) {
+	start := time.Now()
+	span, ctx := obs.TracerImpl.StartSpan(ctx, "llm.chat")
+	span.SetAttribute(obs.AttrModel, c.inner.Model())
+	span.SetAttribute(obs.AttrProvider, string(c.inner.Provider()))
+	defer span.End()
+
+	resp, err := c.inner.Chat(ctx, req)
+	latency := time.Since(start)
+	labels := map[string]string{
+		"model":    c.inner.Model(),
+		"provider": string(c.inner.Provider()),
+	}
+	obs.MetricsImpl.RecordLatency(latency, labels)
+	if err != nil {
+		obs.MetricsImpl.RecordError("llm_error", labels)
+		span.SetStatus(obs.StatusCodeError, err.Error())
+		return nil, err
+	}
+	span.SetStatus(obs.StatusCodeOk, "")
+	if resp != nil {
+		span.SetAttribute(obs.AttrFinishReason, resp.FinishReason)
+		if resp.Usage != nil {
+			span.SetAttribute(obs.AttrTokensInput, resp.Usage.InputTokens)
+			span.SetAttribute(obs.AttrTokensOutput, resp.Usage.OutputTokens)
+			labels["finish_reason"] = resp.FinishReason
+			obs.MetricsImpl.IncrementTokensUsed(resp.Usage.InputTokens+resp.Usage.OutputTokens, labels)
+		}
+	}
+	return resp, nil
+}
+
+func (c *InstrumentedClient) Completion(ctx context.Context, prompt string) (*Response, error) {
+	start := time.Now()
+	span, ctx := obs.TracerImpl.StartSpan(ctx, "llm.completion")
+	span.SetAttribute(obs.AttrModel, c.inner.Model())
+	span.SetAttribute(obs.AttrProvider, string(c.inner.Provider()))
+	defer span.End()
+
+	resp, err := c.inner.Completion(ctx, prompt)
+	latency := time.Since(start)
+	labels := map[string]string{
+		"model":    c.inner.Model(),
+		"provider": string(c.inner.Provider()),
+	}
+	obs.MetricsImpl.RecordLatency(latency, labels)
+	if err != nil {
+		obs.MetricsImpl.RecordError("llm_error", labels)
+		span.SetStatus(obs.StatusCodeError, err.Error())
+		return nil, err
+	}
+	span.SetStatus(obs.StatusCodeOk, "")
+	if resp != nil {
+		span.SetAttribute(obs.AttrFinishReason, resp.FinishReason)
+		if resp.Usage != nil {
+			span.SetAttribute(obs.AttrTokensInput, resp.Usage.InputTokens)
+			span.SetAttribute(obs.AttrTokensOutput, resp.Usage.OutputTokens)
+			labels["finish_reason"] = resp.FinishReason
+			obs.MetricsImpl.IncrementTokensUsed(resp.Usage.InputTokens+resp.Usage.OutputTokens, labels)
+		}
+	}
+	return resp, nil
+}
+
+func (c *InstrumentedClient) Stream(ctx context.Context, req *ChatRequest, output chan<- *Response) error {
+	span, ctx := obs.TracerImpl.StartSpan(ctx, "llm.stream")
+	span.SetAttribute(obs.AttrModel, c.inner.Model())
+	span.SetAttribute(obs.AttrProvider, string(c.inner.Provider()))
+	defer span.End()
+
+	wrapped := make(chan *Response)
+	go func() {
+		for resp := range wrapped {
+			if resp != nil && resp.Usage != nil {
+				labels := map[string]string{
+					"model":    c.inner.Model(),
+					"provider": string(c.inner.Provider()),
+				}
+				obs.MetricsImpl.IncrementTokensUsed(resp.Usage.InputTokens+resp.Usage.OutputTokens, labels)
+			}
+			output <- resp
+		}
+		close(output)
+	}()
+	err := c.inner.Stream(ctx, req, wrapped)
+	if err != nil {
+		labels := map[string]string{
+			"model":    c.inner.Model(),
+			"provider": string(c.inner.Provider()),
+		}
+		obs.MetricsImpl.RecordError("llm_error", labels)
+		span.SetStatus(obs.StatusCodeError, err.Error())
+		return err
+	}
+	span.SetStatus(obs.StatusCodeOk, "")
+	return nil
+}
+
+func (c *InstrumentedClient) Model() string      { return c.inner.Model() }
+func (c *InstrumentedClient) Provider() Provider { return c.inner.Provider() }
+func (c *InstrumentedClient) Validate() error    { return c.inner.Validate() }

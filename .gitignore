@@ -78,3 +78,4 @@ api-keys.txt
 
 # My random llm instructions for MVP
 docs/dev/product-plan.md
+.cursor/

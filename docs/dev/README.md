@@ -10,4 +10,9 @@
 - Observability: `docs/dev/observability.md`
 - Regression Testing: `docs/dev/regression-tests.md`
 
+### Running tests
+- Default: `go test ./... -race`
+- Adapters compiled: `go test ./... -race -tags adapters_redis,adapters_pgvector`
+- Full smoke (external services): `go test ./... -race -tags adapters_redis,adapters_pgvector,smoke`
+
 

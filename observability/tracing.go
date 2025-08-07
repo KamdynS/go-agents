@@ -2,6 +2,9 @@ package observability
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"net/http"
 	"time"
 )
 
@@ -9,7 +12,7 @@ import (
 type Tracer interface {
 	// StartSpan creates a new span with the given name
 	StartSpan(ctx context.Context, name string) (Span, context.Context)
-	
+
 	// SpanFromContext extracts the span from context
 	SpanFromContext(ctx context.Context) Span
 }
@@ -18,16 +21,16 @@ type Tracer interface {
 type Span interface {
 	// SetAttribute sets an attribute on the span
 	SetAttribute(key string, value interface{})
-	
+
 	// SetStatus sets the span status
 	SetStatus(code StatusCode, message string)
-	
+
 	// AddEvent adds an event to the span
 	AddEvent(name string, attributes map[string]interface{})
-	
+
 	// End finishes the span
 	End()
-	
+
 	// Context returns the span context
 	Context() context.Context
 }
@@ -40,6 +43,32 @@ const (
 	StatusCodeOk
 	StatusCodeError
 )
+
+// Common attribute keys (align loosely with OTel HTTP and GenAI conventions)
+const (
+	AttrHTTPMethod   = "http.method"
+	AttrHTTPRoute    = "http.route"
+	AttrHTTPStatus   = "http.status_code"
+	AttrRequestID    = "request.id"
+	AttrProvider     = "genai.provider"
+	AttrModel        = "genai.model"
+	AttrFinishReason = "genai.finish_reason"
+	AttrToolName     = "genai.tool.name"
+	AttrTokensInput  = "genai.tokens.input"
+	AttrTokensOutput = "genai.tokens.output"
+)
+
+// Global, swappable implementations (no-ops by default)
+var (
+	TracerImpl  Tracer  = &NoOpTracer{}
+	MetricsImpl Metrics = &NoOpMetrics{}
+)
+
+// SetTracer swaps the global tracer implementation
+func SetTracer(t Tracer) { TracerImpl = t }
+
+// SetMetrics swaps the global metrics implementation
+func SetMetrics(m Metrics) { MetricsImpl = m }
 
 // NoOpTracer is a no-operation implementation of Tracer
 type NoOpTracer struct{}
@@ -180,7 +209,7 @@ func (s *DefaultSpan) End() {
 	}
 	s.ended = true
 	s.endTime = time.Now()
-	
+
 	// Record the completed span
 	spanData := SpanData{
 		Name:       s.name,
@@ -205,3 +234,50 @@ var _ Tracer = (*NoOpTracer)(nil)
 var _ Tracer = (*DefaultTracer)(nil)
 var _ Span = (*NoOpSpan)(nil)
 var _ Span = (*DefaultSpan)(nil)
+
+// ----- Simple HTTP context propagation helpers -----
+
+const (
+	headerRequestID   = "X-Request-ID"
+	headerTraceParent = "Traceparent" // reserved for future OTel wiring
+)
+
+type requestIDKey struct{}
+
+// GenerateRequestID returns a random 16-byte hex string
+func GenerateRequestID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
+}
+
+// WithRequestID stores a request id in the context
+func WithRequestID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, requestIDKey{}, id)
+}
+
+// RequestIDFromContext retrieves a request id from context
+func RequestIDFromContext(ctx context.Context) (string, bool) {
+	v := ctx.Value(requestIDKey{})
+	if v == nil {
+		return "", false
+	}
+	id, ok := v.(string)
+	return id, ok
+}
+
+// ExtractHTTPContext extracts basic propagation headers into context
+func ExtractHTTPContext(ctx context.Context, r *http.Request) context.Context {
+	id := r.Header.Get(headerRequestID)
+	if id == "" {
+		id = GenerateRequestID()
+	}
+	return WithRequestID(ctx, id)
+}
+
+// InjectHTTPHeaders writes propagation headers to the response
+func InjectHTTPHeaders(w http.ResponseWriter, ctx context.Context) {
+	if id, ok := RequestIDFromContext(ctx); ok {
+		w.Header().Set(headerRequestID, id)
+	}
+}

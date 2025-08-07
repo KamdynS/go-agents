@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/KamdynS/go-agents/agent/core"
+	obs "github.com/KamdynS/go-agents/observability"
 )
 
 // Server wraps an agent with HTTP endpoints
@@ -20,10 +21,12 @@ type Server struct {
 
 // Config holds HTTP server configuration
 type Config struct {
-	Port         int
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-	EnableCORS   bool
+	Port           int
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
+	EnableCORS     bool
+	RequestTimeout time.Duration
+	AllowedOrigins string // comma-separated; "*" by default
 }
 
 // NewServer creates a new HTTP server for an agent
@@ -37,6 +40,12 @@ func NewServer(agent core.Agent, config Config) *Server {
 	if config.WriteTimeout == 0 {
 		config.WriteTimeout = 10 * time.Second
 	}
+	if config.RequestTimeout == 0 {
+		config.RequestTimeout = 60 * time.Second
+	}
+	if config.AllowedOrigins == "" {
+		config.AllowedOrigins = "*"
+	}
 
 	s := &Server{
 		agent:  agent,
@@ -46,9 +55,19 @@ func NewServer(agent core.Agent, config Config) *Server {
 	mux := http.NewServeMux()
 	s.setupRoutes(mux)
 
+	// Wrap with middleware: recovery -> requestID -> timeout -> metrics/tracing -> CORS
+	var handler http.Handler = mux
+	handler = s.recoveryMiddleware(handler)
+	handler = s.requestIDMiddleware(handler)
+	handler = s.timeoutMiddleware(handler)
+	handler = s.observabilityMiddleware(handler)
+	if s.config.EnableCORS {
+		handler = s.corsMiddleware(handler)
+	}
+
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", config.Port),
-		Handler:      mux,
+		Handler:      handler,
 		ReadTimeout:  config.ReadTimeout,
 		WriteTimeout: config.WriteTimeout,
 	}
@@ -80,6 +99,7 @@ type ChatResponse struct {
 
 // healthHandler provides a health check endpoint
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
+	obs.InjectHTTPHeaders(w, r.Context())
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"status": "healthy",
@@ -124,6 +144,7 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 		Meta:      response.Meta,
 	}
 
+	obs.InjectHTTPHeaders(w, r.Context())
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(chatResp)
 }
@@ -145,6 +166,7 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	obs.InjectHTTPHeaders(w, r.Context())
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -189,6 +211,11 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 
 		case <-r.Context().Done():
+			// try to send final done event on cancel
+			fmt.Fprintf(w, "event: done\ndata: {}\n\n")
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
 			return
 		}
 	}
@@ -204,7 +231,7 @@ func (s *Server) writeError(w http.ResponseWriter, message string, code int) {
 // corsMiddleware adds CORS headers
 func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Origin", s.config.AllowedOrigins)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
@@ -215,6 +242,82 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// timeoutMiddleware enforces a per-request timeout
+func (s *Server) timeoutMiddleware(next http.Handler) http.Handler {
+	return http.TimeoutHandler(next, s.config.RequestTimeout, "request timeout")
+}
+
+// requestIDMiddleware extracts or generates a request id and attaches to context
+func (s *Server) requestIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := obs.ExtractHTTPContext(r.Context(), r)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// recoveryMiddleware ensures panics become 500 with JSON error
+func (s *Server) recoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				s.writeError(w, "Internal server error", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// observabilityMiddleware records spans and request metrics
+func (s *Server) observabilityMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		route := r.URL.Path
+		method := r.Method
+
+		span, ctx := obs.TracerImpl.StartSpan(r.Context(), "http.request")
+		span.SetAttribute(obs.AttrHTTPRoute, route)
+		span.SetAttribute(obs.AttrHTTPMethod, method)
+		if id, ok := obs.RequestIDFromContext(ctx); ok {
+			span.SetAttribute(obs.AttrRequestID, id)
+		}
+
+		// Capture status code by wrapping ResponseWriter
+		rw := &statusCapturingWriter{ResponseWriter: w, status: 200}
+		next.ServeHTTP(rw, r.WithContext(ctx))
+
+		latency := time.Since(start)
+		span.SetAttribute(obs.AttrHTTPStatus, rw.status)
+		if rw.status >= 500 {
+			span.SetStatus(obs.StatusCodeError, http.StatusText(rw.status))
+		} else {
+			span.SetStatus(obs.StatusCodeOk, "")
+		}
+		span.End()
+
+		// Emit metrics
+		obs.MetricsImpl.IncrementRequests(map[string]string{
+			"route":       route,
+			"method":      method,
+			"status_code": fmt.Sprintf("%d", rw.status),
+		})
+		obs.MetricsImpl.RecordLatency(latency, map[string]string{
+			"route":       route,
+			"method":      method,
+			"status_code": fmt.Sprintf("%d", rw.status),
+		})
+	})
+}
+
+type statusCapturingWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusCapturingWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
 }
 
 // ListenAndServe starts the HTTP server

@@ -4,4 +4,6 @@ use (
 	.
 	./llm/anthropic
 	./llm/openai
+	./memory/redis
+	./memory/vector/pgvector
 )
