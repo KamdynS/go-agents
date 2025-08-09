@@ -20,8 +20,12 @@
 - With adapters compiled in (no external infra required to compile):
   - `go test ./... -race -tags adapters_redis,adapters_pgvector`
 - With external services for smoke (opt-in):
-  - Start Redis/Postgres (docker/docker-compose) and set `DATABASE_URL`
+  - Start Redis/Postgres (docker/docker-compose). For pgvector tests, set `DATABASE_URL`.
   - `go test ./... -race -tags adapters_redis,adapters_pgvector,smoke`
+
+### Live regression script
+- Requires a `.env` at repo root with provider keys (see script for details)
+- Runs a small test server and hits `/health`, `/test/*` endpoints
 
 ### CI recommendations
 - Job 1: default `go test ./... -race`

@@ -192,7 +192,7 @@ Claude responds well to:
 ## Testing
 
 ```go
-// TODO: Add testing examples with mock responses
+// TODO: Add testing snippets with mock responses
 ```
 
 ## Contributing

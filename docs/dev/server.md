@@ -1,4 +1,4 @@
-# HTTP Server
+# HTTP Server (Optional Reference)
 
 - Status: HTTP server implemented with tests
 
@@ -15,7 +15,6 @@ SSE: headers `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Conn
 ### Config
 - `Port` (8080)
 - `ReadTimeout` 10s, `WriteTimeout` 10s, `RequestTimeout` 60s
-- `EnableCORS` (false), `AllowedOrigins` ("*")
 
 ### Observability hooks
 - New span per request with route/method/status and request id injected as `X-Request-ID`.
@@ -25,6 +24,10 @@ SSE: headers `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Conn
 - Strict JSON decoding (`DisallowUnknownFields`) and request size limit (default 1 MiB, configurable via `MaxRequestBodyBytes`).
 
 Note: CORS is intentionally not handled in the core server. Add it in your application layer or reverse proxy.
+
+### Integrate into your own server
+- Preferred: import `agent/core` and call your agent from your handlers; use our SSE format as a reference.
+- Or: wrap the reference server’s handlers in your routing/middleware stack.
 
 ### Next
 - Auth middleware (API key / bearer)

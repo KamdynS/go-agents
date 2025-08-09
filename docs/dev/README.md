@@ -10,6 +10,12 @@
 - Observability: `docs/dev/observability.md`
 - Regression Testing: `docs/dev/regression-tests.md`
 
+## Integration Guide
+
+- Library-first: import `github.com/KamdynS/go-agents/...` packages into your existing server
+- Optional reference HTTP/SSE server in `server/http`; add your own CORS/auth/policy
+- Examples are published as separate repos (e.g., basic RAG backend)
+
 ### Running tests
 - Default: `go test ./... -race`
 - Adapters compiled: `go test ./... -race -tags adapters_redis,adapters_pgvector`
