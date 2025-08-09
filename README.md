@@ -11,7 +11,7 @@ Go AI Agents is a comprehensive framework designed to bridge the gap between AI 
 
 ### Key Features
 
-- 🚀 **Production-Ready**: Built-in HTTP/gRPC servers, observability, and deployment tools
+- 🚀 **Production-Ready**: Built-in HTTP server, observability, and deployment tools
 - ⚡ **High Performance**: Leverages Go's concurrency for parallel LLM calls and tool execution
 - 🔧 **Modular Architecture**: Pluggable LLM providers, memory stores, and tools
 - 📦 **Single Binary Deployment**: No runtime dependencies, containerization-friendly
@@ -81,7 +81,7 @@ curl -X POST http://localhost:8080/chat/stream \
          ├──────────────────────────────┼──────────────────────────────┘
          │                              │
 ┌─────────────────┐    ┌─────────────────┐
-│  HTTP/gRPC      │    │   Deployment    │
+│  HTTP Server    │    │   Deployment    │
 │   Server        │    │     Tools       │
 └─────────────────┘    └─────────────────┘
 ```
@@ -337,6 +337,12 @@ kubectl apply -f deploy/k8s/
 | `AGENT_PORT` | HTTP server port | 8080 |
 | `AGENT_LOG_LEVEL` | Log level | info |
 
+### Security
+- Libraries accept API keys only via code (config structs). Packages do not read environment variables and never log API keys.
+- Applications and examples may load keys from environment variables for deployability. A `.env.example` is provided for local development; copy to `.env` and fill in your real keys.
+- Core HTTP server intentionally omits CORS/auth; add those in your application or reverse proxy.
+- Avoid logging sensitive configuration values.
+
 ### Programmatic Configuration
 
 ```go
@@ -392,7 +398,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 - [x] Core agent framework
 - [x] OpenAI and Anthropic providers
 - [x] HTTP server and CLI tools
-- [ ] gRPC server implementation
+  
 - [ ] Vector database integrations
 - [ ] Multi-agent orchestration
 - [ ] Streaming responses

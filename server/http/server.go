@@ -24,9 +24,9 @@ type Config struct {
 	Port           int
 	ReadTimeout    time.Duration
 	WriteTimeout   time.Duration
-	EnableCORS     bool
 	RequestTimeout time.Duration
-	AllowedOrigins string // comma-separated; "*" by default
+	// MaxRequestBodyBytes limits the size of inbound JSON payloads. Defaults to 1 MiB.
+	MaxRequestBodyBytes int64
 }
 
 // NewServer creates a new HTTP server for an agent
@@ -43,8 +43,8 @@ func NewServer(agent core.Agent, config Config) *Server {
 	if config.RequestTimeout == 0 {
 		config.RequestTimeout = 60 * time.Second
 	}
-	if config.AllowedOrigins == "" {
-		config.AllowedOrigins = "*"
+	if config.MaxRequestBodyBytes == 0 {
+		config.MaxRequestBodyBytes = 1 << 20 // 1 MiB
 	}
 
 	s := &Server{
@@ -55,15 +55,12 @@ func NewServer(agent core.Agent, config Config) *Server {
 	mux := http.NewServeMux()
 	s.setupRoutes(mux)
 
-	// Wrap with middleware: recovery -> requestID -> timeout -> metrics/tracing -> CORS
+	// Wrap with middleware: recovery -> requestID -> timeout -> metrics/tracing
 	var handler http.Handler = mux
 	handler = s.recoveryMiddleware(handler)
 	handler = s.requestIDMiddleware(handler)
 	handler = s.timeoutMiddleware(handler)
 	handler = s.observabilityMiddleware(handler)
-	if s.config.EnableCORS {
-		handler = s.corsMiddleware(handler)
-	}
 
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", config.Port),
@@ -114,8 +111,13 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enforce body size limit and strict JSON decoding
+	r.Body = http.MaxBytesReader(w, r.Body, s.config.MaxRequestBodyBytes)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
 	var req ChatRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decoder.Decode(&req); err != nil {
 		s.writeError(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
@@ -156,8 +158,13 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enforce body size limit and strict JSON decoding
+	r.Body = http.MaxBytesReader(w, r.Body, s.config.MaxRequestBodyBytes)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
 	var req ChatRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decoder.Decode(&req); err != nil {
 		s.writeError(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
@@ -228,21 +235,7 @@ func (s *Server) writeError(w http.ResponseWriter, message string, code int) {
 	json.NewEncoder(w).Encode(ChatResponse{Error: message})
 }
 
-// corsMiddleware adds CORS headers
-func (s *Server) corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", s.config.AllowedOrigins)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}
+// (CORS intentionally omitted in core; add in your application layer)
 
 // timeoutMiddleware enforces a per-request timeout
 func (s *Server) timeoutMiddleware(next http.Handler) http.Handler {

@@ -1,4 +1,4 @@
-# Server
+# HTTP Server
 
 - Status: HTTP server implemented with tests
 
@@ -10,7 +10,7 @@
 SSE: headers `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`. Flush after each event. Final `event: done` sent on completion or cancel.
 
 ### Middleware stack
-- Recovery → Request ID → Timeout → Observability → CORS
+- Recovery → Request ID → Timeout → Observability
 
 ### Config
 - `Port` (8080)
@@ -21,6 +21,10 @@ SSE: headers `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Conn
 - New span per request with route/method/status and request id injected as `X-Request-ID`.
 - Request metrics (rate, latency, status).
 
+### Security & Limits
+- Strict JSON decoding (`DisallowUnknownFields`) and request size limit (default 1 MiB, configurable via `MaxRequestBodyBytes`).
+
+Note: CORS is intentionally not handled in the core server. Add it in your application layer or reverse proxy.
+
 ### Next
-- gRPC service
 - Auth middleware (API key / bearer)

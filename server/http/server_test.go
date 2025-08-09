@@ -120,7 +120,6 @@ func TestNewServer(t *testing.T) {
 		Port:         9090,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
-		EnableCORS:   true,
 	}
 
 	server := NewServer(agent, config)
@@ -145,9 +144,7 @@ func TestNewServer(t *testing.T) {
 		t.Errorf("Expected WriteTimeout 5s, got %v", server.config.WriteTimeout)
 	}
 
-	if !server.config.EnableCORS {
-		t.Error("Expected EnableCORS to be true")
-	}
+	// CORS is not part of core server anymore
 
 	if server.server == nil {
 		t.Error("HTTP server not initialized")
@@ -541,77 +538,11 @@ func TestServer_WriteError(t *testing.T) {
 }
 
 func TestServer_CorsMiddleware(t *testing.T) {
-	agent := NewMockAgent()
-	server := NewServer(agent, Config{})
-
-	// Test handler that will be wrapped
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test response"))
-	})
-
-	// Apply CORS middleware
-	corsHandler := server.corsMiddleware(testHandler)
-
-	// Test regular request
-	req := httptest.NewRequest("POST", "/test", nil)
-	w := httptest.NewRecorder()
-
-	corsHandler.ServeHTTP(w, req)
-
-	// Check CORS headers
-	origin := w.Header().Get("Access-Control-Allow-Origin")
-	if origin != "*" {
-		t.Errorf("Expected Access-Control-Allow-Origin *, got %s", origin)
-	}
-
-	methods := w.Header().Get("Access-Control-Allow-Methods")
-	if !strings.Contains(methods, "POST") {
-		t.Errorf("Expected Access-Control-Allow-Methods to contain POST, got %s", methods)
-	}
-
-	headers := w.Header().Get("Access-Control-Allow-Headers")
-	if !strings.Contains(headers, "Content-Type") {
-		t.Errorf("Expected Access-Control-Allow-Headers to contain Content-Type, got %s", headers)
-	}
-
-	// Check that handler was called
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status code 200, got %d", w.Code)
-	}
-
-	body := w.Body.String()
-	if body != "test response" {
-		t.Errorf("Expected body 'test response', got %s", body)
-	}
+	t.Skip("CORS middleware removed from core; test skipped")
 }
 
 func TestServer_CorsMiddleware_Options(t *testing.T) {
-	agent := NewMockAgent()
-	server := NewServer(agent, Config{})
-
-	// Test handler that should NOT be called for OPTIONS
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("Handler should not be called for OPTIONS request")
-	})
-
-	corsHandler := server.corsMiddleware(testHandler)
-
-	// Test OPTIONS request
-	req := httptest.NewRequest("OPTIONS", "/test", nil)
-	w := httptest.NewRecorder()
-
-	corsHandler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status code 200 for OPTIONS, got %d", w.Code)
-	}
-
-	// Check CORS headers are still set
-	origin := w.Header().Get("Access-Control-Allow-Origin")
-	if origin != "*" {
-		t.Errorf("Expected Access-Control-Allow-Origin *, got %s", origin)
-	}
+	t.Skip("CORS middleware removed from core; test skipped")
 }
 
 func TestChatRequest(t *testing.T) {
@@ -668,7 +599,6 @@ func TestConfig(t *testing.T) {
 		Port:         9999,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 20 * time.Second,
-		EnableCORS:   false,
 	}
 
 	if config.Port != 9999 {
@@ -683,9 +613,7 @@ func TestConfig(t *testing.T) {
 		t.Errorf("Expected WriteTimeout 20s, got %v", config.WriteTimeout)
 	}
 
-	if config.EnableCORS {
-		t.Error("Expected EnableCORS to be false")
-	}
+	// CORS no longer part of Config
 }
 
 // Integration test with httptest server

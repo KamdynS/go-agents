@@ -10,7 +10,7 @@
   - Target: publish 0.1.0-beta next week
 - Phase 3 – Multi-Agent & Production Hardening
   - Multi-agent orchestration (optional)
-  - gRPC + streaming
+- Streaming improvements (SSE)
   - Prometheus + OpenTelemetry
   - Load tests
   - Target: v0.9 (~2 months after beta)

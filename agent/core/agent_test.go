@@ -60,6 +60,9 @@ type MockLLMClient struct {
 	nextIndex int
 	shouldErr bool
 	err       error
+
+	// tool-call scripting per call index
+	scriptedToolCalls [][]llm.ToolCall
 }
 
 func NewMockLLMClient() *MockLLMClient {
@@ -75,6 +78,16 @@ func (m *MockLLMClient) AddResponse(content string) {
 		Role:     "assistant",
 		Model:    "mock-model",
 		Provider: llm.ProviderOpenAI,
+	})
+}
+
+func (m *MockLLMClient) AddResponseWithToolCalls(content string, calls []llm.ToolCall) {
+	m.responses = append(m.responses, llm.Response{
+		Content:   content,
+		Role:      "assistant",
+		Model:     "mock-model",
+		Provider:  llm.ProviderOpenAI,
+		ToolCalls: calls,
 	})
 }
 
@@ -141,6 +154,22 @@ func (m *MockLLMClient) Validate() error {
 
 func (m *MockLLMClient) GetCalls() []llm.ChatRequest {
 	return m.calls
+}
+
+// Dummy tool for tests
+type EchoTool struct{}
+
+func (e *EchoTool) Name() string        { return "echo" }
+func (e *EchoTool) Description() string { return "Echoes the input string" }
+func (e *EchoTool) Execute(ctx context.Context, input string) (string, error) {
+	return "ECHO:" + input, nil
+}
+func (e *EchoTool) Schema() map[string]interface{} {
+	return map[string]interface{}{
+		"type":       "object",
+		"properties": map[string]interface{}{"input": map[string]interface{}{"type": "string"}},
+		"required":   []string{"input"},
+	}
 }
 
 func TestNewChatAgent(t *testing.T) {
@@ -229,6 +258,61 @@ func TestChatAgent_Run_Basic(t *testing.T) {
 	}
 	if call.Messages[0].Content != "You are a helpful assistant" {
 		t.Errorf("Expected system prompt, got %s", call.Messages[0].Content)
+	}
+}
+
+func TestChatAgent_Run_WithToolInvocation(t *testing.T) {
+	mockLLM := NewMockLLMClient()
+	// First response asks to call tool
+	mockLLM.AddResponseWithToolCalls("Calling tool", []llm.ToolCall{{
+		ID:   "call-1",
+		Type: "function",
+		Function: llm.Function{
+			Name:      "echo",
+			Arguments: `{"input":"hello"}`,
+		},
+	}})
+	// Second response after tool output
+	mockLLM.AddResponse("Final answer after tool")
+
+	reg := tools.NewRegistry()
+	_ = reg.Register(&EchoTool{})
+
+	agent := NewChatAgent(ChatConfig{
+		Model: mockLLM,
+		Tools: reg,
+		Config: AgentConfig{
+			SystemPrompt:  "You are a helpful assistant",
+			MaxIterations: 2,
+		},
+	})
+
+	ctx := context.Background()
+	input := Message{Role: "user", Content: "use echo"}
+
+	result, err := agent.Run(ctx, input)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result.Content != "Final answer after tool" {
+		t.Fatalf("unexpected final content: %s", result.Content)
+	}
+
+	// Verify that the second LLM call contained the tool output message
+	calls := mockLLM.GetCalls()
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 LLM calls, got %d", len(calls))
+	}
+	lastCall := calls[1]
+	foundToolMsg := false
+	for _, m := range lastCall.Messages {
+		if m.Role == "tool" && strings.HasPrefix(m.Content, "ECHO:") {
+			foundToolMsg = true
+			break
+		}
+	}
+	if !foundToolMsg {
+		t.Fatalf("second call should include tool result message")
 	}
 }
 
