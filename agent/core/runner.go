@@ -102,6 +102,8 @@ func (a *ChatAgent) Run(ctx context.Context, input Message) (Message, error) {
 	for _, msg := range history {
 		messages = append(messages, llm.Message{Role: msg.Role, Content: msg.Content})
 	}
+	// Always include current input
+	messages = append(messages, llm.Message{Role: input.Role, Content: input.Content})
 	// Apply optional memory processors
 	if len(a.processors) > 0 {
 		pruned := a.applyProcessors(ctx, history)
@@ -109,6 +111,7 @@ func (a *ChatAgent) Run(ctx context.Context, input Message) (Message, error) {
 		for _, m := range pruned {
 			messages = append(messages, llm.Message{Role: m.Role, Content: m.Content})
 		}
+		messages = append(messages, llm.Message{Role: input.Role, Content: input.Content})
 	}
 
 	// Build tool definitions from registry (if any)
@@ -304,12 +307,14 @@ func (a *ChatAgent) RunStream(ctx context.Context, input Message, output chan<- 
 	for _, msg := range history {
 		messages = append(messages, llm.Message{Role: msg.Role, Content: msg.Content})
 	}
+	messages = append(messages, llm.Message{Role: input.Role, Content: input.Content})
 	if len(a.processors) > 0 {
 		pruned := a.applyProcessors(ctx, history)
 		messages = []llm.Message{{Role: "system", Content: a.Config.SystemPrompt}}
 		for _, m := range pruned {
 			messages = append(messages, llm.Message{Role: m.Role, Content: m.Content})
 		}
+		messages = append(messages, llm.Message{Role: input.Role, Content: input.Content})
 	}
 
 	var toolDefs []llm.Tool
