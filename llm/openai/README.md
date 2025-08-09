@@ -149,7 +149,7 @@ Choose models based on your needs:
 ## Testing
 
 ```go
-// TODO: Add testing examples
+// TODO: Add testing snippets
 ```
 
 ## Contributing

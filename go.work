@@ -1,9 +1,0 @@
-go 1.24.4
-
-use (
-	.
-	./llm/anthropic
-	./llm/openai
-	./memory/redis
-	./memory/vector/pgvector
-)

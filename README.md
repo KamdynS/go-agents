@@ -26,13 +26,11 @@ Go AI Agents is a comprehensive framework designed to bridge the gap between AI 
 - Go 1.21 or later
 - OpenAI API key (or other LLM provider)
 
-### Installation
+### Installation (CLI optional)
 
 ```bash
-# Install the CLI tool
+# Option A: Use the CLI (optional)
 go install github.com/KamdynS/go-agents/cmd/agentctl@latest
-
-# Create a new agent project
 agentctl init my-agent
 cd my-agent
 
@@ -41,6 +39,10 @@ export OPENAI_API_KEY=your_api_key_here
 
 # Run the agent
 go run main.go
+
+# Option B: Use as a library only (no CLI)
+# In your app's go.mod, add github.com/KamdynS/go-agents
+# Then write your own main.go using the packages under `agent`, `llm`, `server`, etc.
 ```
 
 Your agent is now running on `http://localhost:8080`!
@@ -319,12 +321,11 @@ cd deploy
 docker-compose up -d
 ```
 
+Note: services under `deploy/` are for demos. For production, use your application repo's deployment.
+
 ### Kubernetes
 
-```bash
-# Apply Kubernetes manifests
-kubectl apply -f deploy/k8s/
-```
+This repository is a library. Use your application repo's own Kubernetes manifests. Previously referenced `deploy/k8s/` is intentionally not included here.
 
 ## Configuration
 
@@ -339,9 +340,17 @@ kubectl apply -f deploy/k8s/
 
 ### Security
 - Libraries accept API keys only via code (config structs). Packages do not read environment variables and never log API keys.
-- Applications and examples may load keys from environment variables for deployability. A `.env.example` is provided for local development; copy to `.env` and fill in your real keys.
+- Applications and examples may load keys from environment variables for deployability. If you use the regression tests, create a `.env` at repo root (see `regression-test-backend/run.sh`).
 - Core HTTP server intentionally omits CORS/auth; add those in your application or reverse proxy.
 - Avoid logging sensitive configuration values.
+
+### Build Tags
+- Optional adapters are behind build tags:
+  - `adapters_redis`
+  - `adapters_pgvector`
+- Examples:
+  - Compile and test: `go test ./... -race -tags adapters_redis,adapters_pgvector`
+  - Smoke with external services: start Redis/Postgres, set `DATABASE_URL`, then run with those tags
 
 ### Programmatic Configuration
 
@@ -359,12 +368,20 @@ agent := core.NewChatAgent(core.ChatConfig{
 })
 ```
 
-## Examples
+## Integration
 
-Check out the [examples](./examples/) directory for complete working examples:
+Use the library inside your own server or framework. A minimal reference HTTP/SSE server is provided in `server/http`, but CORS/auth/policy should be implemented in your app or reverse proxy.
 
-- [Hello World](./examples/hello/) - Basic agent setup
-- [RAG Bot](./examples/rag-bot/) - Document Q&A with retrieval
+Basic example using the reference server:
+
+```go
+agent := core.NewChatAgent(core.ChatConfig{ /* ... */ })
+srv := httpserver.NewServer(agent, httpserver.Config{ Port: 8080 })
+ctx := context.Background()
+_ = srv.ListenAndServe(ctx)
+```
+
+For custom servers, call your `core.Agent` directly and shape HTTP/SSE responses as needed.
 
 ## Development
 
@@ -382,7 +399,7 @@ cd go-agents
 # Install dependencies
 go mod tidy
 
-# Build CLI tool
+# Build CLI tool (optional)
 go build -o bin/agentctl ./cmd/agentctl
 
 # Run tests
@@ -422,7 +439,7 @@ Apache License 2.0 - see [LICENSE](LICENSE) for details.
 
 ## Support
 
-- 📖 [Documentation](./docs/)
+- 📖 [Documentation](./docs/) · [CLI (optional)](./docs/dev/cli.md)
 - 💬 [Discussions](https://github.com/KamdynS/go-agents/discussions)
 - 🐛 [Issues](https://github.com/KamdynS/go-agents/issues)
 
