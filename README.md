@@ -26,13 +26,11 @@ Go AI Agents is a comprehensive framework designed to bridge the gap between AI 
 - Go 1.21 or later
 - OpenAI API key (or other LLM provider)
 
-### Installation
+### Installation (CLI optional)
 
 ```bash
-# Install the CLI tool
+# Option A: Use the CLI (optional)
 go install github.com/KamdynS/go-agents/cmd/agentctl@latest
-
-# Create a new agent project
 agentctl init my-agent
 cd my-agent
 
@@ -41,6 +39,10 @@ export OPENAI_API_KEY=your_api_key_here
 
 # Run the agent
 go run main.go
+
+# Option B: Use as a library only (no CLI)
+# In your app's go.mod, add github.com/KamdynS/go-agents
+# Then write your own main.go using the packages under `agent`, `llm`, `server`, etc.
 ```
 
 Your agent is now running on `http://localhost:8080`!
@@ -397,7 +399,7 @@ cd go-agents
 # Install dependencies
 go mod tidy
 
-# Build CLI tool
+# Build CLI tool (optional)
 go build -o bin/agentctl ./cmd/agentctl
 
 # Run tests
@@ -437,7 +439,7 @@ Apache License 2.0 - see [LICENSE](LICENSE) for details.
 
 ## Support
 
-- 📖 [Documentation](./docs/)
+- 📖 [Documentation](./docs/) · [CLI (optional)](./docs/dev/cli.md)
 - 💬 [Discussions](https://github.com/KamdynS/go-agents/discussions)
 - 🐛 [Issues](https://github.com/KamdynS/go-agents/issues)
 
