@@ -13,6 +13,8 @@ func initProject(name, projectType string) error {
 	}
 
 	switch projectType {
+	case "minimal":
+		return initMinimalProject(name)
 	case "basic":
 		return initBasicProject(name)
 	case "rag":
@@ -23,12 +25,21 @@ func initProject(name, projectType string) error {
 		return fmt.Errorf("unknown project type: %s", projectType)
 	}
 }
+func initMinimalProject(name string) error {
+	files := map[string]string{
+		"main.go":    minimalMainGo,
+		"go.mod":     fmt.Sprintf(goModTemplate, name),
+		"README.md":  fmt.Sprintf(minimalReadme, name),
+		".gitignore": gitignoreTemplate,
+	}
+	return writeFiles(name, files)
+}
 
 func initBasicProject(name string) error {
 	files := map[string]string{
-		"main.go": basicMainGo,
-		"go.mod":  fmt.Sprintf(goModTemplate, name),
-		"README.md": fmt.Sprintf(basicReadme, name),
+		"main.go":    basicMainGo,
+		"go.mod":     fmt.Sprintf(goModTemplate, name),
+		"README.md":  fmt.Sprintf(basicReadme, name),
 		"Dockerfile": dockerfileTemplate,
 		".gitignore": gitignoreTemplate,
 	}
@@ -38,9 +49,9 @@ func initBasicProject(name string) error {
 
 func initRAGProject(name string) error {
 	files := map[string]string{
-		"main.go": ragMainGo,
-		"go.mod":  fmt.Sprintf(goModTemplate, name),
-		"README.md": fmt.Sprintf(ragReadme, name),
+		"main.go":    ragMainGo,
+		"go.mod":     fmt.Sprintf(goModTemplate, name),
+		"README.md":  fmt.Sprintf(ragReadme, name),
 		"Dockerfile": dockerfileTemplate,
 		".gitignore": gitignoreTemplate,
 	}
@@ -50,9 +61,9 @@ func initRAGProject(name string) error {
 
 func initMultiAgentProject(name string) error {
 	files := map[string]string{
-		"main.go": multiAgentMainGo,
-		"go.mod":  fmt.Sprintf(goModTemplate, name),
-		"README.md": fmt.Sprintf(multiAgentReadme, name),
+		"main.go":    multiAgentMainGo,
+		"go.mod":     fmt.Sprintf(goModTemplate, name),
+		"README.md":  fmt.Sprintf(multiAgentReadme, name),
 		"Dockerfile": dockerfileTemplate,
 		".gitignore": gitignoreTemplate,
 	}
@@ -79,6 +90,61 @@ require (
     github.com/KamdynS/go-agents v0.1.0
     github.com/KamdynS/go-agents/llm/openai v0.1.0
 )
+`
+
+const minimalMainGo = `package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "os"
+
+    "github.com/KamdynS/go-agents/llm"
+    "github.com/KamdynS/go-agents/llm/openai"
+)
+
+func main() {
+    apiKey := os.Getenv("OPENAI_API_KEY")
+    if apiKey == "" {
+        log.Fatal("OPENAI_API_KEY is not set")
+    }
+
+    client := openai.NewClient(openai.Config{APIKey: apiKey, Model: "gpt-3.5-turbo"})
+
+    req := &llm.ChatRequest{
+        Messages: []llm.Message{{Role: "user", Content: "Say hello succinctly"}},
+    }
+    resp, err := client.Chat(context.Background(), req)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(resp.Content)
+}
+`
+
+const minimalReadme = `# %s
+
+Minimal setup for quick inference.
+
+## Setup
+
+1) Set your API key:
+   ` + "```" + `bash
+   export OPENAI_API_KEY=your_api_key_here
+   ` + "```" + `
+
+2) Install deps:
+   ` + "```" + `bash
+   go mod tidy
+   ` + "```" + `
+
+3) Run one-off inference:
+   ` + "```" + `bash
+   go run main.go
+   ` + "```" + `
+
+Next: replace the prompt in main.go, or switch models via typed constants in ` + "`github.com/KamdynS/go-agents/llm/models.go`" + `.
 `
 
 const basicMainGo = `package main

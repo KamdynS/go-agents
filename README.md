@@ -31,13 +31,13 @@ Go AI Agents is a comprehensive framework designed to bridge the gap between AI 
 ```bash
 # Option A: Use the CLI (optional)
 go install github.com/KamdynS/go-agents/cmd/agentctl@latest
-agentctl init my-agent
+agentctl init my-agent                 # default: minimal (prints to stdout)
 cd my-agent
 
 # Set up environment
 export OPENAI_API_KEY=your_api_key_here
 
-# Run the agent
+# Run (minimal): prints a single response to stdout
 go run main.go
 
 # Option B: Use as a library only (no CLI)
@@ -276,7 +276,16 @@ type Store interface {
 }
 ```
 
-## Project Types
+## Project Types (CLI)
+
+### Minimal (default)
+
+One-off inference to stdout; no HTTP server.
+
+```bash
+agentctl init --type=minimal my-app
+cd my-app && export OPENAI_API_KEY=... && go run main.go
+```
 
 ### Basic Agent
 
@@ -382,6 +391,40 @@ _ = srv.ListenAndServe(ctx)
 ```
 
 For custom servers, call your `core.Agent` directly and shape HTTP/SSE responses as needed.
+
+## Workflow diagrams (Mermaid)
+
+You can visualize workflows built with `workflow.Builder` as Mermaid diagrams.
+
+1) Register your workflow in your app:
+
+```go
+w := workflow.New().
+  Step("parse", ...).
+  Branch(
+    workflow.Branch("b1", ...),
+    workflow.Branch("b2", ...),
+  ).
+  Merge("merge", ...).
+  Build()
+_ = workflow.Register("myflow", w)
+```
+
+2) Run your server as usual. Use the built-in debug endpoints:
+
+```bash
+curl "http://localhost:8080/debug/workflows"                       # list names
+curl "http://localhost:8080/debug/workflows/mermaid?name=myflow"    # mermaid
+curl "http://localhost:8080/debug/workflows/mermaid?name=myflow&dir=LR&conds=1"
+```
+
+3) Or from terminal via the CLI:
+
+```bash
+agentctl graph --name myflow --host localhost:8080 --dir LR --conds
+```
+
+Note: debug endpoints are intentionally minimal and do not add CORS/auth; secure at the edge as needed.
 
 ## Development
 
