@@ -10,6 +10,14 @@
 - Observability: `docs/dev/observability.md`
 - Regression Testing: `docs/dev/regression-tests.md`
 
+## Deferred (Post v0.0.1)
+
+- MCP client/server shims (tools in/out)
+- Evals module (textual/tool usage) + CLI harness
+- Richer multi-agent policies (debate/vote), budget/limits
+- RAG reranker helpers and additional chunkers
+- OTel metrics exporter (the tracer shim exists; metrics adapter TBD)
+
 ## Integration Guide
 
 - Library-first: import `github.com/KamdynS/go-agents/...` packages into your existing server

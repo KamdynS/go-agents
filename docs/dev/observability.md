@@ -22,12 +22,17 @@ This project exposes swappable observability interfaces with safe defaults.
 - Request IDs via `X-Request-ID` header
 - Helpers: `ExtractHTTPContext`, `InjectHTTPHeaders`, `GenerateRequestID`
 
-#### Enable OTel/Prom later
-Replace globals at startup:
+#### Enable OTel/Prom
+Replace globals at startup in your app wiring:
 
 ```go
-observability.SetTracer(otelTracerImpl)   // implements Tracer
-observability.SetMetrics(promMetricsImpl) // implements Metrics
+// Prometheus-like endpoint without external deps (observability/prom)
+promExp := prom.New()
+observability.SetMetrics(promExp)
+http.Handle("/metrics", prom.Handler(promExp))
+
+// OpenTelemetry tracer shim (requires -tags adapters_otel and app-level OTel setup)
+observability.SetTracer(otel.NewTracer("my-service", nil))
 ```
 
 Expose Prom scrape endpoint and OTel exporter in your app wiring; defaults keep CI green without external infra.

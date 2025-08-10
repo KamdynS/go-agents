@@ -381,6 +381,18 @@ agent := core.NewChatAgent(core.ChatConfig{
 
 Use the library inside your own server or framework. A minimal reference HTTP/SSE server is provided in `server/http`, but CORS/auth/policy should be implemented in your app or reverse proxy.
 
+Observability: Swap in metrics/tracer implementations in your app wiring.
+
+```go
+// Metrics endpoint
+exp := prom.New()
+observability.SetMetrics(exp)
+http.Handle("/metrics", prom.Handler(exp))
+
+// OTel tracer shim (optional; requires adapters_otel)
+observability.SetTracer(otel.NewTracer("my-service", nil))
+```
+
 Basic example using the reference server:
 
 ```go
@@ -461,7 +473,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
   
 - [ ] Vector database integrations
 - [ ] Multi-agent orchestration
-- [ ] Streaming responses
+- [x] Streaming responses
 - [ ] Plugin ecosystem
 - [ ] Performance benchmarks
 

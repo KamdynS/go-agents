@@ -11,6 +11,6 @@
 - Latency metric and `tool_error` on failures
 
 ### Next
-- Define input schema typing and validation
-- Add built-ins (calculator, web search)
-- Safety/allowlist config
+- Define input schema typing and validation (agent extracts `input` today; richer schemas supported by user tools)
+- Encourage example repos to host built-in tools (calculator, web search) rather than core library
+- Safety/allowlist guidance in examples; core remains unopinionated

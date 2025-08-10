@@ -66,6 +66,19 @@ func (a *ChatAgent) Run(ctx context.Context, input Message) (Message, error) {
 		defer cancel()
 	}
 
+	// Resolve per-request config and tools if a resolver is provided
+	effectiveConfig := a.Config
+	effectiveTools := a.Tools
+	if a.resolver != nil {
+		resolvedCfg, rTools := a.resolver.Resolve(ctx, input, a.Config)
+		if (resolvedCfg != AgentConfig{}) {
+			effectiveConfig = resolvedCfg
+		}
+		if rTools != nil {
+			effectiveTools = rTools
+		}
+	}
+
 	// Store input message in memory
 	if a.Mem != nil {
 		if existing, err := a.Mem.Retrieve(ctx, "conversation"); err == nil {
@@ -98,7 +111,7 @@ func (a *ChatAgent) Run(ctx context.Context, input Message) (Message, error) {
 	}
 
 	// Prepare messages for LLM
-	messages := []llm.Message{{Role: "system", Content: a.Config.SystemPrompt}}
+	messages := []llm.Message{{Role: "system", Content: effectiveConfig.SystemPrompt}}
 	for _, msg := range history {
 		messages = append(messages, llm.Message{Role: msg.Role, Content: msg.Content})
 	}
@@ -107,7 +120,7 @@ func (a *ChatAgent) Run(ctx context.Context, input Message) (Message, error) {
 	// Apply optional memory processors
 	if len(a.processors) > 0 {
 		pruned := a.applyProcessors(ctx, history)
-		messages = []llm.Message{{Role: "system", Content: a.Config.SystemPrompt}}
+		messages = []llm.Message{{Role: "system", Content: effectiveConfig.SystemPrompt}}
 		for _, m := range pruned {
 			messages = append(messages, llm.Message{Role: m.Role, Content: m.Content})
 		}
@@ -116,9 +129,9 @@ func (a *ChatAgent) Run(ctx context.Context, input Message) (Message, error) {
 
 	// Build tool definitions from registry (if any)
 	var toolDefs []llm.Tool
-	if a.Tools != nil {
-		for _, name := range a.Tools.List() {
-			if t, ok := a.Tools.Get(name); ok {
+	if effectiveTools != nil {
+		for _, name := range effectiveTools.List() {
+			if t, ok := effectiveTools.Get(name); ok {
 				toolDefs = append(toolDefs, llm.Tool{
 					Type: "function",
 					Function: llm.ToolFunction{
@@ -132,7 +145,7 @@ func (a *ChatAgent) Run(ctx context.Context, input Message) (Message, error) {
 	}
 
 	// ReAct-lite loop
-	maxIterations := a.Config.MaxIterations
+	maxIterations := effectiveConfig.MaxIterations
 	if maxIterations <= 0 {
 		maxIterations = 1
 	}
@@ -169,15 +182,28 @@ func (a *ChatAgent) Run(ctx context.Context, input Message) (Message, error) {
 			}
 		}
 
+		// Trace attributes and token metrics
+		span.SetAttribute(obs.AttrProvider, response.Provider)
+		span.SetAttribute(obs.AttrModel, response.Model)
+		if response.FinishReason != "" {
+			span.SetAttribute(obs.AttrFinishReason, response.FinishReason)
+		}
+		if response.Usage != nil {
+			obs.MetricsImpl.IncrementTokensUsed(response.Usage.InputTokens, map[string]string{"direction": "input", "model": response.Model})
+			obs.MetricsImpl.IncrementTokensUsed(response.Usage.OutputTokens, map[string]string{"direction": "output", "model": response.Model})
+			span.SetAttribute(obs.AttrTokensInput, response.Usage.InputTokens)
+			span.SetAttribute(obs.AttrTokensOutput, response.Usage.OutputTokens)
+		}
+
 		// If tool calls are requested, execute them and continue loop
-		if len(response.ToolCalls) > 0 && a.Tools != nil {
+		if len(response.ToolCalls) > 0 && effectiveTools != nil {
 			// Append assistant message that triggered tool call to conversation
 			messages = append(messages, llm.Message{Role: "assistant", Content: response.Content})
 
 			for _, tc := range response.ToolCalls {
 				// Resolve tool
 				toolName := tc.Function.Name
-				tool, ok := a.Tools.Get(toolName)
+				tool, ok := effectiveTools.Get(toolName)
 				if !ok {
 					span.AddEvent("tool.not_found", map[string]interface{}{"tool": toolName})
 					continue
@@ -192,6 +218,28 @@ func (a *ChatAgent) Run(ctx context.Context, input Message) (Message, error) {
 					}
 				}
 
+				// Basic schema validation for required fields if provided
+				if schema := tool.Schema(); schema != nil {
+					if reqFields, ok := schema["required"].([]string); ok {
+						// Convert argObj if JSON parsed ok, otherwise create object with only input
+						args := argObj
+						if args == nil {
+							args = map[string]interface{}{"input": inputStr}
+						}
+						missing := make([]string, 0)
+						for _, f := range reqFields {
+							if _, ok := args[f]; !ok {
+								missing = append(missing, f)
+							}
+						}
+						if len(missing) > 0 {
+							// Surface validation failure to model
+							messages = append(messages, llm.Message{Role: "tool", Content: fmt.Sprintf("error: missing required fields %v", missing), ToolCallID: tc.ID})
+							continue
+						}
+					}
+				}
+
 				// Middleware: before tool
 				for _, m := range a.mw {
 					if err := m.BeforeToolExecute(ctx, toolName, inputStr); err != nil {
@@ -201,7 +249,7 @@ func (a *ChatAgent) Run(ctx context.Context, input Message) (Message, error) {
 				}
 
 				// Execute tool via registry (already instrumented)
-				result, err := a.Tools.Execute(ctx, tool.Name(), inputStr)
+				result, err := effectiveTools.Execute(ctx, tool.Name(), inputStr)
 				if err != nil {
 					// Provide error back to model as tool content
 					result = fmt.Sprintf("error: %v", err)
@@ -290,6 +338,19 @@ func (a *ChatAgent) RunStream(ctx context.Context, input Message, output chan<- 
 		}
 	}
 
+	// Resolve per-request config and tools if a resolver is provided
+	effectiveConfig := a.Config
+	effectiveTools := a.Tools
+	if a.resolver != nil {
+		resolvedCfg, rTools := a.resolver.Resolve(ctx, input, a.Config)
+		if (resolvedCfg != AgentConfig{}) {
+			effectiveConfig = resolvedCfg
+		}
+		if rTools != nil {
+			effectiveTools = rTools
+		}
+	}
+
 	// Build history
 	var history []Message
 	if a.Mem != nil {
@@ -303,14 +364,14 @@ func (a *ChatAgent) RunStream(ctx context.Context, input Message, output chan<- 
 	}
 
 	// Prepare LLM request
-	messages := []llm.Message{{Role: "system", Content: a.Config.SystemPrompt}}
+	messages := []llm.Message{{Role: "system", Content: effectiveConfig.SystemPrompt}}
 	for _, msg := range history {
 		messages = append(messages, llm.Message{Role: msg.Role, Content: msg.Content})
 	}
 	messages = append(messages, llm.Message{Role: input.Role, Content: input.Content})
 	if len(a.processors) > 0 {
 		pruned := a.applyProcessors(ctx, history)
-		messages = []llm.Message{{Role: "system", Content: a.Config.SystemPrompt}}
+		messages = []llm.Message{{Role: "system", Content: effectiveConfig.SystemPrompt}}
 		for _, m := range pruned {
 			messages = append(messages, llm.Message{Role: m.Role, Content: m.Content})
 		}
@@ -318,9 +379,9 @@ func (a *ChatAgent) RunStream(ctx context.Context, input Message, output chan<- 
 	}
 
 	var toolDefs []llm.Tool
-	if a.Tools != nil {
-		for _, name := range a.Tools.List() {
-			if t, ok := a.Tools.Get(name); ok {
+	if effectiveTools != nil {
+		for _, name := range effectiveTools.List() {
+			if t, ok := effectiveTools.Get(name); ok {
 				toolDefs = append(toolDefs, llm.Tool{
 					Type: "function",
 					Function: llm.ToolFunction{

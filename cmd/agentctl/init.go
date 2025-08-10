@@ -87,8 +87,8 @@ const goModTemplate = `module %s
 go 1.21
 
 require (
-    github.com/KamdynS/go-agents v0.1.0
-    github.com/KamdynS/go-agents/llm/openai v0.1.0
+    github.com/KamdynS/go-agents v0.0.1
+    github.com/KamdynS/go-agents/llm/openai v0.0.1
 )
 `
 
@@ -293,8 +293,8 @@ func main() {
 		},
 	})
 
-	// TODO: Implement multi-agent orchestration
-	// For now, using single coordinator agent
+    // Simple orchestration sketch: expose specialists as tools (users expand in their repo)
+    // Example placeholder demonstrates pattern without adding heavy logic here.
 
 	// Create HTTP server
 	server := http.NewServer(coordinator, http.Config{

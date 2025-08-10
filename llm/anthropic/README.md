@@ -86,11 +86,9 @@ messages := []llm.Message{
 response, err := client.Chat(ctx, messages)
 ```
 
-### Tool Use (TODO)
+### Tool Use
 
-```go
-// TODO: Implement Anthropic tool use (function calling) support
-```
+Tool use support is currently limited; general chat/streaming are implemented. Tool result handling will be expanded as the SDK stabilizes.
 
 ## Environment Variables
 
@@ -161,7 +159,7 @@ All Claude 3 models support 200K token context windows:
 - [x] Simple completion
 - [x] Model identification
 - [x] Error handling
-- [ ] Streaming responses (mock implementation)
+- [x] Streaming responses
 - [ ] Tool use (function calling)
 - [ ] Vision capabilities (Claude 3 with images)
 - [ ] System prompts optimization
