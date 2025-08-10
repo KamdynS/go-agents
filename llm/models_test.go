@@ -30,9 +30,9 @@ func TestModelConstants(t *testing.T) {
 
 func TestGetModel(t *testing.T) {
 	tests := []struct {
-		name           string
-		model          string
-		expectedExists bool
+		name             string
+		model            string
+		expectedExists   bool
 		expectedProvider Provider
 	}{
 		{"OpenAI GPT-4o", ModelGPT4o, true, ProviderOpenAI},
@@ -45,7 +45,7 @@ func TestGetModel(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model, err := GetModel(test.model)
-			
+
 			exists := (err == nil)
 			if exists != test.expectedExists {
 				t.Errorf("Expected exists=%v, got %v", test.expectedExists, exists)
@@ -94,11 +94,11 @@ func TestValidateModel(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := ValidateModel(test.model)
-			
+
 			if test.shouldError && err == nil {
 				t.Error("Expected error but got none")
 			}
-			
+
 			if !test.shouldError && err != nil {
 				t.Errorf("Expected no error but got: %v", err)
 			}
@@ -128,15 +128,15 @@ func TestModelEstimateCost(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			cost := model.EstimateCost(test.inputTokens, test.outputTokens)
-			
+
 			if test.expectCost && cost < 0 {
 				t.Errorf("Expected non-negative cost, got %f", cost)
 			}
 
 			// Manual calculation to verify
-			expectedCost := (float64(test.inputTokens)/1000000)*model.InputCost + 
-			               (float64(test.outputTokens)/1000000)*model.OutputCost
-			
+			expectedCost := (float64(test.inputTokens)/1000000)*model.InputCost +
+				(float64(test.outputTokens)/1000000)*model.OutputCost
+
 			if cost != expectedCost {
 				t.Errorf("Expected cost %f, got %f", expectedCost, cost)
 			}
@@ -157,14 +157,14 @@ func TestGetCheapestModel(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model, err := GetCheapestModel(test.provider)
-			
+
 			if test.provider == Provider("unknown") {
 				if err == nil {
 					t.Errorf("Expected error for unknown provider, got model %s", model.Name)
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Errorf("Expected model for provider %s, got error: %v", test.provider, err)
 				return
@@ -174,7 +174,7 @@ func TestGetCheapestModel(t *testing.T) {
 			modelInfo := model
 
 			if modelInfo.Provider != test.provider {
-				t.Errorf("Returned model %s belongs to %s, expected %s", 
+				t.Errorf("Returned model %s belongs to %s, expected %s",
 					model.Name, modelInfo.Provider, test.provider)
 			}
 		})
@@ -194,14 +194,14 @@ func TestGetMostCapableModel(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model, err := GetMostCapableModel(test.provider)
-			
+
 			if test.provider == Provider("unknown") {
 				if err == nil {
 					t.Errorf("Expected error for unknown provider, got model %s", model.Name)
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Errorf("Expected model for provider %s, got error: %v", test.provider, err)
 				return
@@ -211,7 +211,7 @@ func TestGetMostCapableModel(t *testing.T) {
 			modelInfo := model
 
 			if modelInfo.Provider != test.provider {
-				t.Errorf("Returned model %s belongs to %s, expected %s", 
+				t.Errorf("Returned model %s belongs to %s, expected %s",
 					model.Name, modelInfo.Provider, test.provider)
 			}
 		})

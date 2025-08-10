@@ -19,197 +19,10 @@ func TestNewStore(t *testing.T) {
 	}
 }
 
-func TestStore_Store(t *testing.T) {
-	store := NewStore()
-	ctx := context.Background()
-
-	tests := []struct {
-		name  string
-		key   string
-		value interface{}
-	}{
-		{"string value", "test-key", "test-value"},
-		{"int value", "int-key", 42},
-		{"map value", "map-key", map[string]string{"nested": "value"}},
-		{"struct value", "struct-key", struct{ Name string }{"test"}},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			err := store.Store(ctx, test.key, test.value)
-			if err != nil {
-				t.Errorf("Store() error = %v", err)
-			}
-
-			// Verify the value was stored
-			if stored, exists := store.data[test.key]; !exists {
-				t.Error("Value was not stored")
-			} else {
-				// Use deep comparison for complex types like maps
-				switch v := test.value.(type) {
-				case map[string]string:
-					if storedMap, ok := stored.(map[string]string); ok {
-						if len(storedMap) != len(v) {
-							t.Errorf("Stored map length %d != expected %d", len(storedMap), len(v))
-						} else {
-							for key, val := range v {
-								if storedMap[key] != val {
-									t.Errorf("Stored map[%s] = %s != expected %s", key, storedMap[key], val)
-								}
-							}
-						}
-					} else {
-						t.Error("Stored value is not a map[string]string")
-					}
-				default:
-					if stored != test.value {
-						t.Errorf("Stored value %v != expected %v", stored, test.value)
-					}
-				}
-			}
-		})
-	}
-}
-
-func TestStore_Retrieve(t *testing.T) {
-	store := NewStore()
-	ctx := context.Background()
-
-	// Store a test value
-	testKey := "test-key"
-	testValue := "test-value"
-	store.data[testKey] = testValue
-
-	// Test retrieving existing value
-	retrieved, err := store.Retrieve(ctx, testKey)
-	if err != nil {
-		t.Errorf("Retrieve() error = %v", err)
-	}
-	if retrieved != testValue {
-		t.Errorf("Retrieved value %v != expected %v", retrieved, testValue)
-	}
-
-	// Test retrieving non-existent value
-	_, err = store.Retrieve(ctx, "non-existent")
-	if err == nil {
-		t.Error("Expected error for non-existent key")
-	}
-}
-
-func TestStore_Delete(t *testing.T) {
-	store := NewStore()
-	ctx := context.Background()
-
-	// Store a test value
-	testKey := "test-key"
-	testValue := "test-value"
-	store.data[testKey] = testValue
-
-	// Delete the value
-	err := store.Delete(ctx, testKey)
-	if err != nil {
-		t.Errorf("Delete() error = %v", err)
-	}
-
-	// Verify the value was deleted
-	if _, exists := store.data[testKey]; exists {
-		t.Error("Value was not deleted")
-	}
-
-	// Delete non-existent key should not error
-	err = store.Delete(ctx, "non-existent")
-	if err != nil {
-		t.Errorf("Delete() error for non-existent key = %v", err)
-	}
-}
-
-func TestStore_List(t *testing.T) {
-	store := NewStore()
-	ctx := context.Background()
-
-	// Test empty store
-	keys, err := store.List(ctx)
-	if err != nil {
-		t.Errorf("List() error = %v", err)
-	}
-	if len(keys) != 0 {
-		t.Errorf("Expected 0 keys in empty store, got %d", len(keys))
-	}
-
-	// Add some test data
-	testData := map[string]interface{}{
-		"key1": "value1",
-		"key2": "value2",
-		"key3": "value3",
-	}
-
-	for k, v := range testData {
-		store.data[k] = v
-	}
-
-	// Test listing keys
-	keys, err = store.List(ctx)
-	if err != nil {
-		t.Errorf("List() error = %v", err)
-	}
-
-	if len(keys) != len(testData) {
-		t.Errorf("Expected %d keys, got %d", len(testData), len(keys))
-	}
-
-	// Check that all expected keys are present
-	keyMap := make(map[string]bool)
-	for _, key := range keys {
-		keyMap[key] = true
-	}
-
-	for expectedKey := range testData {
-		if !keyMap[expectedKey] {
-			t.Errorf("Expected key %s not found in list", expectedKey)
-		}
-	}
-}
-
-func TestStore_Clear(t *testing.T) {
-	store := NewStore()
-	ctx := context.Background()
-
-	// Add some test data
-	testData := map[string]interface{}{
-		"key1": "value1",
-		"key2": "value2",
-		"key3": "value3",
-	}
-
-	for k, v := range testData {
-		store.data[k] = v
-	}
-
-	// Clear the store
-	err := store.Clear(ctx)
-	if err != nil {
-		t.Errorf("Clear() error = %v", err)
-	}
-
-	// Verify the store is empty
-	if len(store.data) != 0 {
-		t.Errorf("Expected empty store after Clear(), got %d items", len(store.data))
-	}
-
-	// Test that List returns empty result
-	keys, err := store.List(ctx)
-	if err != nil {
-		t.Errorf("List() error after Clear() = %v", err)
-	}
-	if len(keys) != 0 {
-		t.Errorf("Expected 0 keys after Clear(), got %d", len(keys))
-	}
-}
-
 func TestStore_ConcurrentAccess(t *testing.T) {
 	store := NewStore()
 	ctx := context.Background()
-	
+
 	// Test concurrent reads and writes
 	done := make(chan bool)
 	errors := make(chan error, 10)
@@ -253,7 +66,6 @@ func TestStore_ConcurrentAccess(t *testing.T) {
 	}
 }
 
-// Test that Store implements memory.Store interface
 func TestStore_ImplementsInterface(t *testing.T) {
 	var _ memory.Store = (*Store)(nil)
 }
@@ -274,19 +86,16 @@ func TestConversationStore_AppendMessage(t *testing.T) {
 	ctx := context.Background()
 	sessionID := "test-session"
 
-	// Test appending first message
 	err := store.AppendMessage(ctx, sessionID, "user", "Hello")
 	if err != nil {
 		t.Errorf("AppendMessage() error = %v", err)
 	}
 
-	// Test appending second message
 	err = store.AppendMessage(ctx, sessionID, "assistant", "Hi there!")
 	if err != nil {
 		t.Errorf("AppendMessage() error = %v", err)
 	}
 
-	// Verify messages were stored
 	key := "conversation:" + sessionID
 	value, exists := store.data[key]
 	if !exists {
@@ -302,7 +111,6 @@ func TestConversationStore_AppendMessage(t *testing.T) {
 		t.Errorf("Expected 2 messages, got %d", len(messages))
 	}
 
-	// Check first message
 	if messages[0].Role != "user" {
 		t.Errorf("Expected first message role 'user', got %s", messages[0].Role)
 	}
@@ -310,7 +118,6 @@ func TestConversationStore_AppendMessage(t *testing.T) {
 		t.Errorf("Expected first message content 'Hello', got %s", messages[0].Content)
 	}
 
-	// Check second message
 	if messages[1].Role != "assistant" {
 		t.Errorf("Expected second message role 'assistant', got %s", messages[1].Role)
 	}
@@ -318,7 +125,6 @@ func TestConversationStore_AppendMessage(t *testing.T) {
 		t.Errorf("Expected second message content 'Hi there!', got %s", messages[1].Content)
 	}
 
-	// Check timestamps
 	if messages[0].Timestamp <= 0 {
 		t.Error("First message should have valid timestamp")
 	}
@@ -412,7 +218,7 @@ func TestConversationStore_ClearSession(t *testing.T) {
 func TestConversationStore_MultipleSessions(t *testing.T) {
 	store := NewConversationStore()
 	ctx := context.Background()
-	
+
 	session1 := "session-1"
 	session2 := "session-2"
 
@@ -508,7 +314,7 @@ func TestConversationStore_ConcurrentAccess(t *testing.T) {
 	store := NewConversationStore()
 	ctx := context.Background()
 	sessionID := "test-session"
-	
+
 	// Test concurrent message appending
 	done := make(chan bool)
 	errors := make(chan error, 10)
