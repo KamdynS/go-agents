@@ -10,6 +10,7 @@ import (
 
 	"github.com/KamdynS/go-agents/agent/core"
 	obs "github.com/KamdynS/go-agents/observability"
+	wf "github.com/KamdynS/go-agents/workflow"
 )
 
 // Server wraps an agent with HTTP endpoints
@@ -77,6 +78,9 @@ func (s *Server) setupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/health", s.healthHandler)
 	mux.HandleFunc("/chat", s.chatHandler)
 	mux.HandleFunc("/chat/stream", s.streamHandler)
+	// Optional debug-only endpoints (no CORS by design). These return Mermaid for registered workflows.
+	mux.HandleFunc("/debug/workflows", s.listWorkflowsHandler)
+	mux.HandleFunc("/debug/workflows/mermaid", s.workflowMermaidHandler)
 }
 
 // ChatRequest represents an incoming chat request
@@ -226,6 +230,52 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+// listWorkflowsHandler returns the names of registered workflows.
+func (s *Server) listWorkflowsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	obs.InjectHTTPHeaders(w, r.Context())
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"workflows": wf.List(),
+	})
+}
+
+// workflowMermaidHandler renders a workflow's Mermaid diagram.
+// Usage: GET /debug/workflows/mermaid?name=<workflow>&dir=LR&conds=1
+func (s *Server) workflowMermaidHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		s.writeError(w, "missing name", http.StatusBadRequest)
+		return
+	}
+	wfInst, ok := wf.Get(name)
+	if !ok {
+		s.writeError(w, "workflow not found", http.StatusNotFound)
+		return
+	}
+
+	var opts []wf.MermaidOption
+	if dir := r.URL.Query().Get("dir"); dir != "" {
+		opts = append(opts, wf.WithDirection(dir))
+	}
+	if r.URL.Query().Get("conds") != "" {
+		opts = append(opts, wf.WithConditionIndicators(true))
+	}
+
+	diagram := wfInst.MermaidFlowchart(opts...)
+	obs.InjectHTTPHeaders(w, r.Context())
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte(diagram))
 }
 
 // writeError writes an error response
