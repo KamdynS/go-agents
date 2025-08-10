@@ -66,11 +66,10 @@ if err != nil {
 fmt.Println(response.Content)
 ```
 
-### Function Calling (TODO)
+### Function Calling
 
-```go
-// TODO: Implement OpenAI function calling support
-```
+OpenAI tool/function calling is supported via `ChatRequest.Tools`.
+Register tools (functions) by passing their JSON schema, and the client will surface tool calls in `Response.ToolCalls` for your agent loop to execute.
 
 ### Streaming Responses
 
@@ -139,8 +138,8 @@ Choose models based on your needs:
 - [x] Simple completion
 - [x] Model identification
 - [x] Error handling
-- [ ] Streaming responses (mock implementation)
-- [ ] Function/tool calling
+- [x] Streaming responses
+- [x] Function/tool calling
 - [ ] Fine-tuned model support
 - [ ] Embeddings API
 - [ ] Image generation (DALL-E)

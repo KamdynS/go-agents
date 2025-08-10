@@ -54,7 +54,7 @@ Legend: Have = implemented, Partial = available but incomplete, Missing = not im
 
 ## Cross-cutting: Streaming & Observability
 - Streaming token output: Have (OpenAI/Anthropic streaming; agent RunStream; SSE)
-- Observability/tracing: Partial (tracer/metrics interfaces; OTel exporter TODO)
+- Observability/tracing: Partial (tracer/metrics interfaces; OTel/Prom exporters planned)
 
 ---
 
@@ -74,8 +74,8 @@ Legend: Have = implemented, Partial = available but incomplete, Missing = not im
   - Code generation helpers (sandbox runner, lint hooks)
 
 ## Status Summary
-- Have: agent loop, tools, structured output, streaming, SSE server, memory store, processors, workflow builder, basic router, tracing/metrics interfaces
-- Partial: routing policies, memory (semantic recall), observability exporters, workflows (suspend/resume), dev tooling, RAG
-- Missing: MCP, A2A, evals, multi-agent supervisor, multimodal, codegen
+- Have: agent loop, tools, structured output, streaming, SSE server, memory store, processors, workflow builder, basic router, tracing/metrics interfaces, basic supervisor policies, RAG helpers (chunk/embed/index/query)
+- Partial: routing policies, memory (semantic recall), observability exporters (Prom text endpoint; OTel tracer shim), workflows (suspend/resume), dev tooling
+- Missing (deferred): MCP, A2A, evals, richer multi-agent policies (debate/vote), multimodal, codegen, RAG reranker
 
 

@@ -30,4 +30,4 @@ Note: CORS is intentionally not handled in the core server. Add it in your appli
 - Or: wrap the reference server’s handlers in your routing/middleware stack.
 
 ### Next
-- Auth middleware (API key / bearer)
+- Optional example auth middleware (API key / bearer) to include in app templates; core remains server-agnostic (no built-in CORS/auth)

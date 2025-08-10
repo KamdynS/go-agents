@@ -1,9 +1,7 @@
 # Agent Runtime (agent/core)
 
-- Status: Single-agent ChatAgent implemented; memory integration; tests green
+- Status: Single-agent ChatAgent implemented; memory integration; tool invocation path wired to `tools.Registry`; streaming orchestration in place; tests green
 - Next:
-  - Tool invocation path (connect to tools.Registry)
-  - Streaming orchestration
   - Configurable planner hook (v2)
 
 Notes:
